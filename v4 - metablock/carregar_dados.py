@@ -33,7 +33,6 @@ CLASSES_ONE_HOT = ["AKIEC", "BCC", "BEN_OTH", "BKL", "DF", "INF",
                     "MAL_OTH", "MEL", "NV", "SCCKA", "VASC"]
 
 SEED = 42
-VAL_SIZE = 0.15
 TEST_SIZE = 0.15
 
 
@@ -70,7 +69,7 @@ def carregar_dados():
         print("Atencao: algumas lesoes tem pelo menos uma imagem faltando. Exemplos:")
         print(lesoes.loc[faltando, ["lesion_id", "classe", "img_path_derm", "img_path_clin"]].head())
 
-    lesoes = _dividir_treino_val_teste(lesoes)
+    lesoes = _dividir_treino_teste(lesoes)
 
     # NOVO: so depois do split (pra usar as estatisticas SO do treino)
     lesoes, metadata_dim = preparar_metadados(lesoes)
@@ -78,7 +77,7 @@ def carregar_dados():
     return lesoes, metadata_dim   # MUDANÇA: agora devolve tb a dimensao do vetor de metadados
 
 
-def _dividir_treino_val_teste(df):
+def _dividir_treino_teste(df):
     """
     Split 70/15/15 em duas chamadas encadeadas de train_test_split,
     estratificado por 'classe'. Como o DataFrame ja tem uma linha por
@@ -86,23 +85,16 @@ def _dividir_treino_val_teste(df):
     vazamento - nao ha como a dermoscopica e a clinica da mesma lesao
     caírem em particoes diferentes, porque elas agora sao a MESMA linha.
     """
-    rest_size = VAL_SIZE + TEST_SIZE
-    train_df, temp_df = train_test_split(
-        df, test_size=rest_size, random_state=SEED, stratify=df["classe"]
-    )
-    relative_test_size = TEST_SIZE / rest_size
-    val_df, test_df = train_test_split(
-        temp_df, test_size=relative_test_size, random_state=SEED, stratify=temp_df["classe"]
+    train_df, test_df = train_test_split(
+        df, test_size=TEST_SIZE, random_state=SEED, stratify=df["classe"]
     )
 
     df = df.copy()
     df["split"] = None
     df.loc[train_df.index, "split"] = "train"
-    df.loc[val_df.index, "split"] = "val"
     df.loc[test_df.index, "split"] = "test"
 
     print(f"\nTreino:     {(df['split'] == 'train').sum()} lesoes")
-    print(f"Validacao:  {(df['split'] == 'val').sum()} lesoes")
     print(f"Teste:      {(df['split'] == 'test').sum()} lesoes")
 
     return df

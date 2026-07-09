@@ -8,7 +8,7 @@ imgs_clin) em vez de uma, e o forward do modelo recebe as duas.
 """
 
 import torch
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, balanced_accuracy_score
 
 def train_one_epoch(model, loader, criterion, optimizer, device):
     model.train()
@@ -32,6 +32,7 @@ def evaluate(model, loader, criterion, device):
     model.eval()
     running_loss = 0.0
     all_preds, all_labels = [], []
+    metrics = {}
     with torch.no_grad():
         for imgs_derm, imgs_clin, metadata, labels in loader:   # MUDANÇA
             imgs_derm = imgs_derm.to(device)
@@ -45,6 +46,12 @@ def evaluate(model, loader, criterion, device):
             preds = outputs.argmax(dim=1)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
-    avg_loss = running_loss / len(loader.dataset)
-    macro_f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
-    return avg_loss, macro_f1, all_labels, all_preds
+
+    metrics['avg_loss'] = running_loss / len(loader.dataset)
+    metrics['macro_f1'] = f1_score(all_labels, all_preds, average="macro", zero_division=0)
+    metrics['accuracy'] = accuracy_score(all_labels, all_preds)  # acuracia - % de acertos totais
+    metrics['balanced_accuracy'] = balanced_accuracy_score(all_labels, all_preds)                                     
+    metrics['macro_precision'] = precision_score(all_labels, all_preds, average="macro", zero_division=0)  # precision media entre as classes
+    metrics['macro_recall'] = recall_score(all_labels, all_preds, average="macro", zero_division=0)         # recall medio entre as classes
+
+    return metrics, all_labels, all_preds
