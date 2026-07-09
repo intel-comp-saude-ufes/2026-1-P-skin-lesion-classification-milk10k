@@ -28,6 +28,14 @@ def preparar_rotulos(df):
 
     return df
 
+def separar_rotulos(df):
+    train_df = df[df["split"] == "train"].reset_index(drop=True)
+    test_df = df[df["split"] == "test"].reset_index(drop=True)
+
+    print(f"Treino:     {len(train_df)} lesoes")
+    print(f"Teste:      {len(test_df)} lesoes")
+
+    return train_df, test_df
 
 if __name__ == "__main__":
     # permite rodar so esse arquivo isoladamente pra testar

@@ -15,19 +15,25 @@ arquitetura interna do modelo.
 """
 
 import random
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
+from sklearn.model_selection import StratifiedKFold
+from sklearn.utils import compute_class_weight
 import torch
+from torch.utils.data import DataLoader, SubsetRandomSampler
 
 from carregar_dados import carregar_dados
-from preparar_rotulos import preparar_rotulos, CLASSES
+from preparar_rotulos import preparar_rotulos, separar_rotulos, CLASSES
 from transformacoes import train_transform, eval_transform
-from dataloaders import criar_dataloaders
 from pesos_classe import calcular_class_weight
 from modelo import criar_modelo
 from loss_otimizador import criar_loss_otimizador
 from loop_treino import treinar
 from avaliacao_final import avaliar_no_teste
+from dataset import MILK10kMultimodalDataset
+from transformacoes import eval_transform, train_transform
 
 # ----------------------------- SEMENTES / REPRODUTIBILIDADE -----------------------------
 
@@ -51,49 +57,40 @@ df, metadata_dim = carregar_dados()
 df = preparar_rotulos(df)
 
 # ----------------------------- 3. DATALOADERS DE TREINO, VALIDACAO E TESTE -----------------------------
+train_df, test_df = separar_rotulos(df)
 
 BATCH_SIZE = 32
+K_FOLDS = 2
+TOLERANCE = 10
+EPOCHS = 1
 
-train_loader, val_loader, test_loader, train_df, val_df, test_df = criar_dataloaders(
-    df, train_transform, eval_transform, batch_size=BATCH_SIZE
-)
+y = train_df['label'].values.astype(np.int64)
 
-# ----------------------------- 4. PESO DE CADA CLASSE (DESBALANCEAMENTO) -----------------------------
+skf = StratifiedKFold(n_splits=K_FOLDS, shuffle=True, random_state=42)
 
-class_weights = calcular_class_weight(train_df, CLASSES)
-class_weights = class_weights.to(device)
+for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(y)), y)):
 
-# ----------------------------- 5. MODELO (RESNET18 COMPARTILHADO + FUSAO POR CONCATENACAO + METABLOCK) -----------------------------
+    print(f"\n--- Fold {fold+1}/{K_FOLDS} ---")
+    fold_path = Path(f'fold{fold+1}')
+    fold_path.mkdir(exist_ok=True)
 
-# re-fixa a semente logo antes de criar o modelo, pra garantir que a camada
-# final (classifier) nasca sempre com os mesmos pesos, independente de
-# quantos numeros aleatorios ja foram consumidos ate aqui (shuffle do
-# DataLoader, augmentation, etc.) - deixa o script reprodutivel de
-# execucao pra execucao.
-torch.manual_seed(SEED)
-model = criar_modelo(num_classes=len(CLASSES), metadata_dim=metadata_dim, device=device)
-print(model)
+    train_folder_df = train_df.iloc[train_idx]   
+    val_folder_df   = train_df.iloc[val_idx]
 
-# ----------------------------- 6. LOSS E OTIMIZADOR -----------------------------
+    train_dataset = MILK10kMultimodalDataset(train_folder_df, transform=train_transform)
+    val_dataset = MILK10kMultimodalDataset(val_folder_df, transform=eval_transform)
 
-LEARNING_RATE = 1e-4
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+                               num_workers=4, pin_memory=True)
+    val_loader   = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=True,
+                               num_workers=4, pin_memory=True)
 
-criterion, optimizer = criar_loss_otimizador(model, class_weights, learning_rate=LEARNING_RATE)
-print(criterion)
-print(optimizer)
+    y_train_fold = y[train_idx]
+    class_weights = compute_class_weight('balanced', classes=np.unique(y_train_fold), y=y_train_fold)
+    class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
 
-# ----------------------------- 7. LOOP DE TREINO -----------------------------
+    model = criar_modelo(num_classes=len(CLASSES), metadata_dim=metadata_dim, device=device)
+    criterion, optimizer = criar_loss_otimizador(model, class_weights)
+    best_metrics = treinar(model, train_loader, val_loader, criterion, optimizer, device, TOLERANCE, EPOCHS, f'{fold_path}/melhor_modelo_f{fold+1}.pt')
 
-N_EPOCHS = 10
-MELHOR_MODELO_PATH = "melhor_modelo_milk10k_multimodal.pt"
-
-best_macro_f1 = treinar(
-    model, train_loader, val_loader, criterion, optimizer, device,
-    n_epochs=N_EPOCHS, caminho_melhor_modelo=MELHOR_MODELO_PATH
-)
-
-# ----------------------------- 8. AVALIACAO FINAL NO TESTE -----------------------------
-
-test_macro_f1, test_labels, test_preds = avaliar_no_teste(
-    model, test_loader, criterion, device, MELHOR_MODELO_PATH, CLASSES
-)
+    pd.DataFrame(best_metrics, index=[0]).to_csv(f"{fold_path}/best_metrics.csv", index=False)

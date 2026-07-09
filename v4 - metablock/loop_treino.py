@@ -12,36 +12,42 @@ nunca do dataset especifico.
 """
 
 import torch
-from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 from treino import train_one_epoch, evaluate
 
 
-def treinar(model, train_loader, val_loader, criterion, optimizer, device, n_epochs, caminho_melhor_modelo):
+def treinar(model, train_loader, val_loader, criterion, optimizer, device, tolerance, n_epochs, caminho_melhor_modelo, early_stopping_metric='macro_f1'):
     """
     Roda o loop de treino por n_epochs epocas. A cada epoca, treina e
     avalia na validacao; se o Macro F1 da validacao melhorar em relacao
     a melhor epoca anterior, salva os pesos do modelo em
     caminho_melhor_modelo. Devolve o melhor Macro F1 alcancado.
     """
-    best_macro_f1 = 0.0  # melhor Macro F1 visto ate agora
-
+    cont_tolerance = 0
+    best_metrics = {}
+    best_metrics[early_stopping_metric] = None
     for epoch in range(1, n_epochs + 1):  # repete uma vez por epoca
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)  # treina 1 epoca, pega o erro medio
-        val_loss, val_macro_f1, val_labels, val_preds = evaluate(model, val_loader, criterion, device)  # avalia na validacao
+        val_metrics, _, _= evaluate(model, val_loader, criterion, device)  # avalia na validacao
 
-        val_accuracy = accuracy_score(val_labels, val_preds)                                      # acuracia - % de acertos totais
-        val_precision = precision_score(val_labels, val_preds, average="macro", zero_division=0)  # precision media entre as classes
-        val_recall = recall_score(val_labels, val_preds, average="macro", zero_division=0)         # recall medio entre as classes
+        print(f"Epoca {epoch:02d} | loss treino: {train_loss:.4f} | loss val: {val_metrics['avg_loss']:.4f} | "
+              f"Macro F1: {val_metrics['macro_f1']:.4f} | Acc: {val_metrics['accuracy']:.4f} | BAcc : {val_metrics['balanced_accuracy']:.4f} |"
+              f"Precision: {val_metrics['macro_precision']:.4f} | Recall: {val_metrics['macro_recall']:.4f}")
 
-        print(f"Epoca {epoch:02d} | loss treino: {train_loss:.4f} | loss val: {val_loss:.4f} | "
-              f"Macro F1: {val_macro_f1:.4f} | Acuracia: {val_accuracy:.4f} | "
-              f"Precision: {val_precision:.4f} | Recall: {val_recall:.4f}")
-
-        if val_macro_f1 > best_macro_f1:                            # melhorou em relacao a melhor epoca ate agora
-            best_macro_f1 = val_macro_f1                            # atualiza o recorde
+        if best_metrics[early_stopping_metric] == None:
+            best_metrics = val_metrics
             torch.save(model.state_dict(), caminho_melhor_modelo)   # salva os pesos desse momento
-            print(f"  -> melhor epoca ate agora (Macro F1 val: {val_macro_f1:.4f}) - modelo salvo em {caminho_melhor_modelo}")
-
-    print(f"\nTreino finalizado - melhor Macro F1 (val): {best_macro_f1:.4f}")
-    return best_macro_f1
+            print(f"  -> melhor epoca ate agora ({early_stopping_metric} val: {val_metrics[early_stopping_metric]:.4f}) - modelo salvo em {caminho_melhor_modelo}")
+        elif val_metrics[early_stopping_metric] > best_metrics[early_stopping_metric]:
+            best_metrics = val_metrics
+            cont_tolerance = 0                            
+            torch.save(model.state_dict(), caminho_melhor_modelo)   # salva os pesos desse momento
+            print(f"  -> melhor epoca ate agora ({early_stopping_metric} val: {val_metrics[early_stopping_metric]:.4f}) - modelo salvo em {caminho_melhor_modelo}")
+        else:
+            cont_tolerance += 1
+            if cont_tolerance >= tolerance:
+                print(f'Early stopping - Epoca{epoch:02d}')
+                break 
+    
+    print(f"\nTreino finalizado - melhor {early_stopping_metric} (val): {best_metrics[early_stopping_metric]:.4f}")
+    return best_metrics
