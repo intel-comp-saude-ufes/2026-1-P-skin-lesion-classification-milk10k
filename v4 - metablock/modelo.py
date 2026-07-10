@@ -25,8 +25,9 @@ class MetaBlock(nn.Module):   # NOVO
 
 
 class MILK10kMultimodalModel(nn.Module):
-    def __init__(self, num_classes: int, metadata_dim: int):   # MUDANÇA: recebe tb metadata_dim
+    def __init__(self, num_classes: int, metadata_dim: int, use_metablock = True):   # MUDANÇA: recebe tb metadata_dim
         super().__init__()
+        self.use_metablock = use_metablock
 
         backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         self.num_features = backbone.fc.in_features
@@ -43,7 +44,8 @@ class MILK10kMultimodalModel(nn.Module):
         feat_clin = self.backbone(img_clin)
 
         combined = torch.cat([feat_derm, feat_clin], dim=1)
-        combined = self.metablock(combined, metadata)   # NOVO: metadados "filtram" as features de imagem
+        if self.use_metablock:
+            combined = self.metablock(combined, metadata) 
 
         return self.classifier(combined)
 
@@ -76,6 +78,6 @@ class TripleBlock(nn.Module):
         return self.classifier(combined)
 
 def criar_modelo(num_classes: int, metadata_dim: int, device) -> nn.Module:   # MUDANÇA
-    #model = MILK10kMultimodalModel(num_classes, metadata_dim)
-    model = TripleBlock(num_classes, metadata_dim)
+    model = MILK10kMultimodalModel(num_classes, metadata_dim, False)
+    #model = TripleBlock(num_classes, metadata_dim)
     return model.to(device)
