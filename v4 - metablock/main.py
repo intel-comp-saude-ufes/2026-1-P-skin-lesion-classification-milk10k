@@ -60,25 +60,33 @@ df = preparar_rotulos(df)
 train_df, test_df = separar_rotulos(df)
 
 BATCH_SIZE = 32
-K_FOLDS = 2
+K_FOLDS = 5
 TOLERANCE = 10
-EPOCHS = 1
+EPOCHS = 50
+
+test_dataset = MILK10kMultimodalDataset(test_df, eval_transform)
+test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE)
 
 y = train_df['label'].values.astype(np.int64)
 
 skf = StratifiedKFold(n_splits=K_FOLDS, shuffle=True, random_state=42)
 
+test_metrics = []
+
+path = Path(f'tripleblock')
+path.mkdir(exist_ok=True)
+
 for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(y)), y)):
 
     print(f"\n--- Fold {fold+1}/{K_FOLDS} ---")
-    fold_path = Path(f'fold{fold+1}')
+    fold_path = Path(f'{path}/fold{fold+1}')
     fold_path.mkdir(exist_ok=True)
 
-    train_folder_df = train_df.iloc[train_idx]   
+    train_folder_df = train_df.iloc[train_idx]
     val_folder_df   = train_df.iloc[val_idx]
 
     train_dataset = MILK10kMultimodalDataset(train_folder_df, transform=train_transform)
-    val_dataset = MILK10kMultimodalDataset(val_folder_df, transform=eval_transform)
+    val_dataset   = MILK10kMultimodalDataset(val_folder_df, transform=eval_transform)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
                                num_workers=4, pin_memory=True)
@@ -91,6 +99,13 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(y)), y)):
 
     model = criar_modelo(num_classes=len(CLASSES), metadata_dim=metadata_dim, device=device)
     criterion, optimizer = criar_loss_otimizador(model, class_weights)
-    best_metrics = treinar(model, train_loader, val_loader, criterion, optimizer, device, TOLERANCE, EPOCHS, f'{fold_path}/melhor_modelo_f{fold+1}.pt')
+    treinar(model, train_loader, val_loader, criterion, optimizer, device, TOLERANCE, EPOCHS, f'{fold_path}/melhor_modelo_f{fold+1}.pt')
 
-    pd.DataFrame(best_metrics, index=[0]).to_csv(f"{fold_path}/best_metrics.csv", index=False)
+    fold_test_metrics, *_ = avaliar_no_teste(model, test_loader, criterion, device,
+                                            f'{fold_path}/melhor_modelo_f{fold+1}.pt',
+                                            CLASSES)
+    test_metrics.append(fold_test_metrics)
+    
+df_metrics = pd.DataFrame(test_metrics)
+df_metrics.insert(0, 'fold', range(1, len(test_metrics)+1))
+df_metrics.to_csv(f'{path}/test_metrics_per_fold.csv', index=False)
