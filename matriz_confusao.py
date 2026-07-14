@@ -12,7 +12,7 @@ from carregar_dados import carregar_dados
 from preparar_rotulos import preparar_rotulos, separar_rotulos, CLASSES
 from dataset import MILK10kMultimodalDataset
 from transformacoes import eval_transform
-from modelo import criar_modelo
+from modelo_maycon import criar_modelo
 
 def carregar_e_avaliar(modelo, test_loader, device, caminho_checkpoint):
     """
@@ -65,7 +65,7 @@ if __name__ == '__main__':
 
     # ==== 5. Recarrega os modelos salvos de uma pasta ====
     #MUDAR: pasta modelos
-    PASTA_MODELOS = "tripleblock"  # <- pasta raiz onde estão as subpastas fold1, fold2...
+    PASTA_MODELOS = "modelos resnet50/sem_metadado"  # <- pasta raiz onde estão as subpastas fold1, fold2...
     padrao_arquivo = os.path.join(PASTA_MODELOS, "fold*", "melhor_modelo_f*.pt")
 
     checkpoints = sorted(glob.glob(padrao_arquivo))
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         nome_modelo = os.path.splitext(os.path.basename(caminho))[0]
 
         #MUDAR: modelo
-        modelo = criar_modelo(num_classes=len(CLASSES), metadata_dim=metadata_dim, device=device)
+        modelo = criar_modelo(num_classes=len(CLASSES), metadata_dim=metadata_dim, device=device, tipo="sem_metadado", backbone="resnet50")
         y_true, y_pred = carregar_e_avaliar(modelo, test_loader, device, caminho)
         resultados[nome_modelo] = (y_true, y_pred)
         
