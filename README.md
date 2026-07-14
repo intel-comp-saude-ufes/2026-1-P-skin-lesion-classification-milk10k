@@ -5,6 +5,9 @@ Este repositório contém código para experimentos de classificação de lesõe
 **Vídeo de apresentação**
 https://drive.google.com/file/d/15DShCklHC3DcDuTJCLq_XjjojGbUp538/view
 
+**Artigo**
+https://drive.google.com/file/d/1n0uHNEvRh2QzpweYZZrkpwfNW10V0omi/view?usp=sharing
+
 **Funcionalidade**
 - **Treinamento**: scripts e funções para treinar modelos de classificação (`treino.py`, `main.py`, `loop_treino.py`, `modelo.py`).
 - **Pré-processamento**: carregamento e transformações de imagens e rótulos (`carregar_dados.py`, `dataloaders.py`, `transformacoes.py`, `preparar_rotulos.py`).
